@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
+#include "pico/rand.h"
 
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
@@ -9,6 +10,7 @@
 #define TOTAL_DISPLAY_BYTES (1 + (DISPLAY_HEIGHT * DISPLAY_WIDTH) / 8)
 #define FISH_WIDTH 16
 #define FISH_HEIGHT 8
+
 
 
 // <'(((><
@@ -97,23 +99,50 @@ void display_clear(){
     }
 }
 
+
+int random_number(int min, int max){
+    uint32_t temp = get_rand_32();
+    int num = min + (int)(temp % (max - min + 1));
+    return num;
+}
+
 int main()
 {
     display_init();
-    int x = 0;
-    bool right = true;
+
+    int fish_x = 0;
+    int fish_y = 25;
+    bool fish_facing_right = true;
+    int destination_x = random_number(0, DISPLAY_WIDTH - FISH_WIDTH);
+    int destination_y = random_number(0, DISPLAY_HEIGHT - FISH_HEIGHT);
     while (true) {
-        display_clear();
-        draw_sprite(x, 28, right);
-        display_show();
-        if(right){
-            x = x + 1;
+
+        if(destination_x > fish_x){
+            fish_facing_right = true;
+            fish_x = fish_x + 1;
+        }else if(destination_x < fish_x){
+            fish_facing_right = false;
+            fish_x = fish_x - 1;
         }else{
-            x = x - 1;
+
         }
-        if(x + FISH_WIDTH - 1 >= DISPLAY_WIDTH - 1 || x <= 0){
-            right = !right;
+
+        if(destination_y > fish_y){
+            fish_y = fish_y + 1;
+        }else if(destination_y < fish_y){
+            fish_y = fish_y - 1;
+        }else{
+
         }
+
+        if(fish_x == destination_x && fish_y == destination_y){
+            destination_x = random_number(0, DISPLAY_WIDTH - FISH_WIDTH);
+            destination_y = random_number(0, DISPLAY_HEIGHT - FISH_HEIGHT);
+        }
+
+        display_clear();
+        draw_sprite(fish_x, fish_y, fish_facing_right);
+        display_show();
         sleep_ms(50);
     }
 }
