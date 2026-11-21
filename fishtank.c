@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <math.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "pico/rand.h"
@@ -13,9 +13,22 @@
 
 
 
-// <'(((><
+// <'(((>< throckmorton
 
-const uint16_t fish[8] = {
+
+typedef struct {
+    float x;
+    float y;
+} Vector;
+
+typedef struct {
+    Vector current_position;
+    Vector destination;
+    bool facing_right;
+    float speed;
+} Fish;
+
+const uint16_t fish_sprite[8] = {
     0b0000000000000000,
     0b0000001010100001,
     0b0011010101010010,
@@ -46,7 +59,7 @@ void draw_sprite(int x, int y, bool right){
             }else{
                 mask = 1 << ((FISH_WIDTH - 1) - j);
             }
-            if(fish[i] & mask){
+            if(fish_sprite[i] & mask){
                 set_pixel(x + j, y + i);
             }
         }
@@ -106,42 +119,53 @@ int random_number(int min, int max){
     return num;
 }
 
+void pick_random_destination(Fish *f){
+    f->destination.x = random_number(0, DISPLAY_WIDTH - FISH_WIDTH);
+    f->destination.y = random_number(0, DISPLAY_HEIGHT - FISH_HEIGHT);
+}
+
+void update_fish(Fish *f){
+    float x_diff = f->destination.x - f->current_position.x;
+    float y_diff = f->destination.y - f->current_position.y;
+    float length = sqrtf(x_diff*x_diff + y_diff * y_diff);
+    if(length <= f->speed){
+        f->current_position.x = f->destination.x;
+        f->current_position.y = f->destination.y;
+        pick_random_destination(f);
+        return;
+    }
+    float x_normal = x_diff/length;
+    float y_normal = y_diff/length;
+
+    f->current_position.x += x_normal * f->speed;
+    f->current_position.y += y_normal * f->speed;
+
+    if(x_normal > 0){
+        f->facing_right = true;
+    }else if(x_normal < 0){
+        f->facing_right = false;
+    }
+
+}
+
 int main()
 {
     display_init();
 
-    int fish_x = 0;
-    int fish_y = 25;
-    bool fish_facing_right = true;
-    int destination_x = random_number(0, DISPLAY_WIDTH - FISH_WIDTH);
-    int destination_y = random_number(0, DISPLAY_HEIGHT - FISH_HEIGHT);
+    Fish fish = {
+        .current_position = {0.0f, 25.0f},
+        .facing_right = true,
+        .speed = 1.0f
+    };
+    pick_random_destination(&fish);
+
     while (true) {
 
-        if(destination_x > fish_x){
-            fish_facing_right = true;
-            fish_x = fish_x + 1;
-        }else if(destination_x < fish_x){
-            fish_facing_right = false;
-            fish_x = fish_x - 1;
-        }else{
+        // ><))))o> bartholomew
 
-        }
-
-        if(destination_y > fish_y){
-            fish_y = fish_y + 1;
-        }else if(destination_y < fish_y){
-            fish_y = fish_y - 1;
-        }else{
-
-        }
-
-        if(fish_x == destination_x && fish_y == destination_y){
-            destination_x = random_number(0, DISPLAY_WIDTH - FISH_WIDTH);
-            destination_y = random_number(0, DISPLAY_HEIGHT - FISH_HEIGHT);
-        }
-
+        update_fish(&fish);
         display_clear();
-        draw_sprite(fish_x, fish_y, fish_facing_right);
+        draw_sprite((int)fish.current_position.x, (int)fish.current_position.y, fish.facing_right);
         display_show();
         sleep_ms(50);
     }
