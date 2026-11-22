@@ -21,12 +21,23 @@ typedef struct {
     float y;
 } Vector;
 
+typedef enum {
+    SWIMMING,
+    IDLE
+} FishState;
+
 typedef struct {
     Vector current_position;
     Vector destination;
     bool facing_right;
     float speed;
+    FishState state;
+    absolute_time_t idle_timer;
+    absolute_time_t bob_timer;
+    int current_bob_step;
 } Fish;
+
+const int bob_array[4] = { 0, -1, 0, -1};
 
 const uint16_t fish_sprite[8] = {
     0b0000000000000000,
@@ -38,6 +49,7 @@ const uint16_t fish_sprite[8] = {
     0b0000001010100001,
     0b0000000000000000,
 };
+
 uint8_t display_array[TOTAL_DISPLAY_BYTES];
 
 void set_pixel(int x, int y){
@@ -88,7 +100,7 @@ void display_init(){
     send_command_to_display(0xAF); // wakes up the display from sleep mode
     send_command_to_display(0xA4); // starts screen in normal mode and shows on screen whats in memory
                         // start of the pixel addressing
-    send_command_to_display(0x20); // settings for writing mode: "the next abyte is the addressing mode"
+    send_command_to_display(0x20); // settings for writing mode: "the next byte is the addressing mode"
     send_command_to_display(0x00); // mode 0 - horrizontal. Other modes are 0x01 = mode 1 - vertical moving down one page and wrapping back to the next column. 0x02 = mode 2 - page wrapping back to the same page instead of down one.
 
     send_command_to_display(0x21); // column range "the next two bytes are the column range"
@@ -125,27 +137,61 @@ void pick_random_destination(Fish *f){
 }
 
 void update_fish(Fish *f){
-    float x_diff = f->destination.x - f->current_position.x;
-    float y_diff = f->destination.y - f->current_position.y;
-    float length = sqrtf(x_diff*x_diff + y_diff * y_diff);
-    if(length <= f->speed){
-        f->current_position.x = f->destination.x;
-        f->current_position.y = f->destination.y;
-        pick_random_destination(f);
-        return;
+    switch (f->state){
+        case SWIMMING: {
+            // Getting the difference between the current position and the destination. Then getting the length of the distance.
+            float x_diff = f->destination.x - f->current_position.x;
+            float y_diff = f->destination.y - f->current_position.y;
+            float length = sqrtf(x_diff*x_diff + y_diff * y_diff);
+
+            // If the fish is within one frame of the destination, snap to the destination and pick a new destination or idles.
+            if(length <= f->speed){
+                f->current_position.x = f->destination.x;
+                f->current_position.y = f->destination.y;
+                int idle_chance = random_number(0, 9);
+                if(idle_chance >= 5){
+                    f->state = IDLE;
+                    f->current_bob_step = 0;
+                    f->bob_timer = make_timeout_time_ms(750);
+                    f->idle_timer = make_timeout_time_ms((uint32_t)(random_number(4, 8) * 1000));
+                    return;
+                }
+                pick_random_destination(f);
+                return;
+            }
+
+            // Normalize the distance so that you can multiply it by the speed
+            float x_normal = x_diff/length;
+            float y_normal = y_diff/length;
+
+            // multiply by speed.
+            f->current_position.x += x_normal * f->speed;
+            f->current_position.y += y_normal * f->speed;
+
+            // boolean check to see what direction the fish is facing.
+            if(x_normal > 0){
+                f->facing_right = true;
+            }else if(x_normal < 0){
+                f->facing_right = false;
+            }
+            break;
+        }
+        case IDLE: {
+            if(!time_reached(f->idle_timer)){
+                if(time_reached(f->bob_timer)){
+                    f->current_bob_step = (f->current_bob_step + 1) % 4;
+                    f->bob_timer = make_timeout_time_ms(750);
+                    return; 
+                }
+                return;
+            }else{
+                f->current_bob_step = 0;
+                pick_random_destination(f);
+                f->state = SWIMMING;
+            }
+            break;
+        }
     }
-    float x_normal = x_diff/length;
-    float y_normal = y_diff/length;
-
-    f->current_position.x += x_normal * f->speed;
-    f->current_position.y += y_normal * f->speed;
-
-    if(x_normal > 0){
-        f->facing_right = true;
-    }else if(x_normal < 0){
-        f->facing_right = false;
-    }
-
 }
 
 int main()
@@ -155,17 +201,18 @@ int main()
     Fish fish = {
         .current_position = {0.0f, 25.0f},
         .facing_right = true,
-        .speed = 1.0f
+        .speed = 1.0f,
+        .state = SWIMMING,
     };
     pick_random_destination(&fish);
 
     while (true) {
-
+               
         // ><))))o> bartholomew
-
+        
         update_fish(&fish);
         display_clear();
-        draw_sprite((int)fish.current_position.x, (int)fish.current_position.y, fish.facing_right);
+        draw_sprite((int)fish.current_position.x, (int)fish.current_position.y + bob_array[fish.current_bob_step], fish.facing_right);
         display_show();
         sleep_ms(50);
     }
